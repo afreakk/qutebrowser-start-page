@@ -4,7 +4,12 @@
 available in [NUR]( https://nur.nix-community.org/repos/afreakk/ )
 or build with cabal
 
-### example usage with [home-manager](https://github.com/nix-community/home-manager):
+### Usage
+```
+qutebrowser-start-page > startpage.html
+```
+
+### Example usage with [home-manager](https://github.com/nix-community/home-manager):
 ```
 let
   qutebrowser_startpage_path = "${config.home.homeDirectory}/.local/share/qutebrowser/startpage.html";
