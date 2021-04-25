@@ -22,19 +22,19 @@ instance FromRow UrlTitle where
 
 lineToUrlTitle = wordsToUrlTitle . words
     where wordsToUrlTitle [] = UrlTitle "NoUrl" "NoTitle"
-          wordsToUrlTitle [url] = UrlTitle url "NoTitle"
-          wordsToUrlTitle [url,title] = UrlTitle url title
+          wordsToUrlTitle [title] = UrlTitle "NoUrl" title
+          wordsToUrlTitle [title,url] = UrlTitle url title
           wordsToUrlTitle (x:y:rest) = wordsToUrlTitle $ unwords [x,y] : rest  
 
-reverseUrlTitle (UrlTitle url title) = UrlTitle title url
+reverseUrlTitle (UrlTitle url title) = UrlTitle (reverse url) (reverse title)
 
 getQuickMarks homeDir = do 
   contents <- readFile (homeDir ++ "/.config/qutebrowser/quickmarks")
-  return $ map (reverseUrlTitle . lineToUrlTitle) (lines contents)
+  return $ map lineToUrlTitle (lines contents)
 
 getBookmarks homeDir = do 
   contents <- readFile (homeDir ++ "/.config/qutebrowser/bookmarks/urls")
-  return $ map lineToUrlTitle (lines contents)
+  return $ map (reverseUrlTitle . lineToUrlTitle . reverse) (lines contents)
 
 main :: IO ()
 main = do
