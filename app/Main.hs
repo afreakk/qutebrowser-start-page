@@ -48,41 +48,40 @@ main = do
     putStrLn $ renderHtml $ basicHtml history frequentSites quickmarks bookmarks)
 
 link :: UrlTitle -> H.Html
-link (UrlTitle url title) = H.a H.! A.href (H.toValue url) $ H.toMarkup title
+link (UrlTitle url title) = H.li $ H.a H.! (A.href (H.toValue url)) H.! (A.class_ "text-ellipsis overflow-hidden block") $ H.toMarkup title
+
+tw :: H.Html
+tw =    H.script H.! (A.src "https://cdn.tailwindcss.com") $ "a"
+-- tw =    H.script H.! (A.type_ "module") H.! (A.src "https://cdn.skypack.dev/twind/shim") $ "f"
+
+header txt = H.span H.! A.class_ "font-medium text-sm font-mono mb-3 text-gray-400" $ txt
+
+list listBody = H.ol H.! A.class_ "list-none whitespace-nowrap" $ listBody
+
+container containerBody = H.div H.! A.class_ "h-full overflow-y-auto m-1 bg-black/65 max-w-sm align-top backdrop-blur-md" $ containerBody
 
 basicHtml :: [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> H.Html
 basicHtml history frequentSites quickmarks bookmarks = H.html $ do
   H.head $ do
+  -- make webpage.darkmode behave
+    H.meta H.! A.name "color-scheme" H.! A.content "dark light"
     H.title "qutebrowser-start-page"
     H.style css
-  H.body $ do
-    H.div $ do
-      H.h1 "quickmarks"
-      mapM_ link quickmarks
-    H.div $ do
-      H.h1 "bookmarks"
-      mapM_ link bookmarks
-    H.div $ do
-      H.h1 "frequentSites"
-      mapM_ link frequentSites
-    H.div $ do
-      H.h1 "history"
-      mapM_ link history
+    (tw)
+  H.body H.! A.class_ "h-full object-cover bg-black grid grid-cols-4 text-slate-100 p-2 bg-[url('https://source.unsplash.com/random/?dark')]" $ do
+    container $ do
+      header "quickmarks"
+      list $ mapM_ link quickmarks
+    container $ do
+      header "bookmarks"
+      list $ mapM_ link bookmarks
+    container $ do
+      header "frequentSites"
+      list $ mapM_ link frequentSites
+    container $ do
+      header "history"
+      list $ mapM_ link history
 
 
 
-css = "\
-\body {\
-\  display: flex;\
-\  flex-wrap: wrap;\
-\}\
-\\
-\div {\
-\  display: flex;\
-\  padding: 10px;\
-\  flex-direction: column;\
-\}\
-\a {\
-\  text-decoration: none;\
-\}\
-\"
+css = ""
