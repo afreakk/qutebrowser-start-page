@@ -48,41 +48,48 @@ main = do
     putStrLn $ renderHtml $ basicHtml history frequentSites quickmarks bookmarks)
 
 link :: UrlTitle -> H.Html
-link (UrlTitle url title) = H.a H.! A.href (H.toValue url) $ H.toMarkup title
+link (UrlTitle url title) = H.li $ H.a H.! (A.href (H.toValue url)) H.! (A.class_ "hover:text-gray-200 text-ellipsis overflow-hidden block") $ H.toMarkup title
+
+tw :: H.Html
+tw =    H.script H.! (A.src "https://cdn.tailwindcss.com") $ return ()
+-- tw =    H.script H.! (A.type_ "module") H.! (A.src "https://cdn.skypack.dev/twind/shim") $ return ()
+
+header txt = H.span H.! A.class_ "w-full block text-center bg-black/65 sticky top-0 backdrop-blur-sm font-bold text-lg font-mono text-gray-400" $ txt
+
+list listBody = H.ol H.! A.class_ "list-none whitespace-nowrap" $ listBody
+
+container containerBody = H.div H.! A.class_ "h-full overflow-y-auto m-4 bg-black/65 align-top backdrop-blur-md" $ containerBody
+
+mkContainer :: H.Html -> [UrlTitle] -> H.Html
+mkContainer title [] = return ()
+mkContainer title links = container $ do
+                          header title
+                          list $ mapM_ link links
+
+
+genBodyClasses :: [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> H.AttributeValue
+genBodyClasses history frequentSites quickmarks bookmarks =
+  let
+    cc [] = 0
+    cc x = 1
+  in
+    (H.stringValue ("bg-[url('https://source.unsplash.com/random/?night')] text-slate-100 p-10 h-full bg-cover bg-black grid grid-cols-" ++ (show (cc history + cc frequentSites + cc quickmarks + cc bookmarks))))
 
 basicHtml :: [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> H.Html
-basicHtml history frequentSites quickmarks bookmarks = H.html $ do
-  H.head $ do
-    H.title "qutebrowser-start-page"
-    H.style css
-  H.body $ do
-    H.div $ do
-      H.h1 "quickmarks"
-      mapM_ link quickmarks
-    H.div $ do
-      H.h1 "bookmarks"
-      mapM_ link bookmarks
-    H.div $ do
-      H.h1 "frequentSites"
-      mapM_ link frequentSites
-    H.div $ do
-      H.h1 "history"
-      mapM_ link history
+basicHtml history frequentSites quickmarks bookmarks =
+  H.html $ do
+    H.head $ do
+    -- make webpage.darkmode behave
+      (tw)
+      H.meta H.! A.name "color-scheme" H.! A.content "dark light"
+      H.title "qutebrowser-start-page"
+      -- H.style css
+    H.body H.! A.class_ (genBodyClasses history frequentSites quickmarks bookmarks) $ do
+      mkContainer "Quickmarks" quickmarks
+      mkContainer "Bookmarks" bookmarks
+      mkContainer "Frequent Sites" frequentSites
+      mkContainer "History" history
 
 
 
-css = "\
-\body {\
-\  display: flex;\
-\  flex-wrap: wrap;\
-\}\
-\\
-\div {\
-\  display: flex;\
-\  padding: 10px;\
-\  flex-direction: column;\
-\}\
-\a {\
-\  text-decoration: none;\
-\}\
-\"
+-- css = ""
