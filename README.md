@@ -1,8 +1,8 @@
 # qutebrowser-start-page
 
 ### Install
-available in [NUR]( https://nur.nix-community.org/repos/afreakk/ )
-or build with cabal
+available in [NUR]( https://nur.nix-community.org/repos/afreakk/ )  
+or `nix-build` it manually
 
 ### Usage
 ```
