@@ -111,6 +111,7 @@ frequentQueryMultiplier = 3
 main :: IO ()
 main = do
   cssPath <- fmap head getArgs
+  cssContent <- readFile cssPath
   homeDir <- fmap homeDirectory (getRealUserID >>= getUserEntryForID)
   quickmarks <- getQuickMarks homeDir
   bookmarks <- getBookmarks homeDir
@@ -118,7 +119,7 @@ main = do
     history <- query conn "SELECT url,title FROM History ORDER BY atime DESC LIMIT ?" (Only maxHistory) :: IO [UrlTitle]
     frequentSitesRaw <- query conn "SELECT url,title FROM History GROUP BY url,title ORDER BY count(*) DESC LIMIT ?" (Only (maxFrequent * frequentQueryMultiplier)) :: IO [UrlTitle]
     let frequentSites = take maxFrequent $ dedupeByDomain frequentSitesRaw
-    putStrLn $ renderHtml $ basicHtml cssPath history frequentSites quickmarks bookmarks)
+    putStrLn $ renderHtml $ basicHtml cssContent history frequentSites quickmarks bookmarks)
 
 faviconImg :: String -> H.Html
 faviconImg url = case faviconUrl url of
@@ -180,12 +181,12 @@ genBodyClasses history frequentSites quickmarks bookmarks =
     (H.stringValue ("bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6 gap-4 h-full grid " ++ (countToGridCols colCount)))
 
 basicHtml :: String -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> H.Html
-basicHtml cssPath history frequentSites quickmarks bookmarks =
+basicHtml cssContent history frequentSites quickmarks bookmarks =
   H.html $ do
     H.head $ do
       -- make webpage.darkmode behave
       H.meta H.! A.name "color-scheme" H.! A.content "dark light"
-      (H.link H.! (A.href (H.stringValue cssPath))) H.! (A.rel "stylesheet")
+      H.style $ H.toMarkup cssContent
       H.title "qutebrowser-start-page"
     H.body H.! A.class_ (genBodyClasses history frequentSites quickmarks bookmarks) $ do
       mkGroupedContainer "text-amber-400" "Quickmarks" quickmarks
