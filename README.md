@@ -9,6 +9,12 @@ or `nix-build` it manually
 qutebrowser-start-page > startpage.html
 ```
 
+### Favicons
+To load favicons on the start page, allow local files to access remote URLs:
+```python
+c.content.local_content_can_access_remote_urls = True
+```
+
 ### Example usage with [home-manager](https://github.com/nix-community/home-manager):
 ```
 let
