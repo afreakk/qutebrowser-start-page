@@ -186,6 +186,8 @@ header clr txt = H.h2 H.! A.class_ (H.toValue $ "px-4 py-2.5 text-base font-semi
 
 list listBody = H.ul H.! A.class_ "list-none p-1.5" $ listBody
 
+listColumns listBody = H.ul H.! A.class_ "list-none p-1.5 columns-2 gap-x-4" $ listBody
+
 container containerBody = H.div H.! A.class_ "h-full overflow-y-auto rounded-lg bg-slate-900/70 shadow-lg border border-white/5" $ containerBody
 
 mkContainer :: String -> H.Html -> [UrlTitle] -> H.Html
@@ -195,15 +197,15 @@ mkContainer clr title links = container $ do
                           list $ mapM_ link links
 
 groupHeader :: String -> H.Html
-groupHeader name = H.h3 H.! A.class_ "px-3 py-1.5 text-xs font-medium text-slate-500 uppercase tracking-wider mt-2 first:mt-0" $ H.toMarkup name
+groupHeader name = H.h3 H.! A.class_ "px-3 py-1.5 text-xs font-medium text-slate-500 uppercase tracking-wider mt-2 first:mt-0 break-after-avoid" $ H.toMarkup name
 
 ungroupedDivider :: H.Html
 ungroupedDivider = H.hr H.! A.class_ "border-t border-white/10 my-2 mx-3"
 
 renderGroup :: Bool -> (String, [UrlTitle]) -> H.Html
 renderGroup _ (groupName, items)
-  -- Real groups get a header and stripped prefixes
-  | not (null groupName) = do
+  -- Real groups get a header and stripped prefixes, wrapped to avoid column breaks
+  | not (null groupName) = H.div H.! A.class_ "break-inside-avoid" $ do
       groupHeader groupName
       mapM_ (link . stripGroupPrefix groupName) items
 -- Ungrouped items get a divider only if there are groups above
@@ -217,7 +219,7 @@ mkGroupedContainer clr title links = container $ do
   header clr title
   let groups = groupQuickmarks links
       hasRealGroups = any (not . null . fst) groups
-  list $ mapM_ (renderGroup hasRealGroups) groups
+  listColumns $ mapM_ (renderGroup hasRealGroups) groups
 
 
 genBodyClasses :: [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> H.AttributeValue
