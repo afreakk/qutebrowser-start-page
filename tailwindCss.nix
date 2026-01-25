@@ -3,7 +3,7 @@ pkgs.stdenv.mkDerivation {
   name = "qutebrowser-start-page-css";
   src = ./.;
   buildPhase = ''
-    ${pkgs.nodePackages.tailwindcss}/bin/tailwindcss -i ./input.css -o ./output.css
+    ${pkgs.nodePackages.tailwindcss}/bin/tailwindcss -i ./input.css -o ./output.css --minify
   '';
   installPhase = ''
     mkdir -p $out/css

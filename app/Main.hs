@@ -12,12 +12,16 @@ import Database.SQLite.Simple.FromRow
 import System.Posix.User
 
 import Data.List (groupBy, nubBy, partition, sortBy)
+import Data.List.NonEmpty (NonEmpty(..))
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import Data.Ord (comparing)
 import Network.URI (parseURI, uriAuthority, uriRegName, uriScheme)
 
 import System.IO
 import System.Environment
+import System.Directory (doesFileExist)
+import Control.Exception (try, IOException)
 
 data UrlTitle = UrlTitle String String deriving (Show)
 
@@ -32,13 +36,25 @@ lineToUrlTitle = wordsToUrlTitle . words
 
 reverseUrlTitle (UrlTitle url title) = UrlTitle (reverse url) (reverse title)
 
-getQuickMarks homeDir = do 
-  contents <- readFile (homeDir ++ "/.config/qutebrowser/quickmarks")
-  return $ map lineToUrlTitle (lines contents)
+-- Safely read file, returning empty list if file doesn't exist or can't be read
+safeReadLines :: FilePath -> IO [String]
+safeReadLines path = do
+  exists <- doesFileExist path
+  if exists
+    then do
+      result <- try (readFile path) :: IO (Either IOException String)
+      case result of
+        Left _ -> return []
+        Right contents -> return $ filter (not . null) (lines contents)
+    else return []
 
-getBookmarks homeDir = do 
-  contents <- readFile (homeDir ++ "/.config/qutebrowser/bookmarks/urls")
-  return $ map (reverseUrlTitle . lineToUrlTitle . reverse) (lines contents)
+getQuickMarks homeDir = do
+  fileLines <- safeReadLines (homeDir ++ "/.config/qutebrowser/quickmarks")
+  return $ map lineToUrlTitle fileLines
+
+getBookmarks homeDir = do
+  fileLines <- safeReadLines (homeDir ++ "/.config/qutebrowser/bookmarks/urls")
+  return $ map (reverseUrlTitle . lineToUrlTitle . reverse) fileLines
 
 -- Strip www. prefix from domain
 stripWww :: String -> String
@@ -101,8 +117,8 @@ groupSortKey g = (0, g)
 groupQuickmarks :: [UrlTitle] -> [(String, [UrlTitle])]
 groupQuickmarks qms =
   let sorted = sortBy (comparing (groupSortKey . getGroup)) qms
-      grouped = groupBy (\a b -> getGroup a == getGroup b) sorted
-      rawGroups = map (\g -> (getGroup (head g), g)) grouped
+      grouped = NE.groupBy (\a b -> getGroup a == getGroup b) sorted
+      rawGroups = map (\(x :| xs) -> (getGroup x, x : xs)) grouped
       -- Separate real groups (2+ items) from singletons
       (realGroups, singletons) = partition (\(_, items) -> length items >= 2) rawGroups
       -- Merge singletons into ungrouped, treating them as ungrouped
@@ -123,6 +139,22 @@ maxFrequent = 50
 frequentQueryMultiplier :: Int
 frequentQueryMultiplier = 3
 
+-- Query history database, returning empty lists if database doesn't exist
+getHistoryData :: FilePath -> IO ([UrlTitle], [UrlTitle])
+getHistoryData dbPath = do
+  exists <- doesFileExist dbPath
+  if exists
+    then do
+      result <- try (withConnection dbPath $ \conn -> do
+        history <- query conn "SELECT url,title FROM History ORDER BY atime DESC LIMIT ?" (Only maxHistory) :: IO [UrlTitle]
+        frequentSitesRaw <- query conn "SELECT url,title FROM History GROUP BY url,title ORDER BY count(*) DESC LIMIT ?" (Only (maxFrequent * frequentQueryMultiplier)) :: IO [UrlTitle]
+        let frequentSites = take maxFrequent $ dedupeByDomain frequentSitesRaw
+        return (history, frequentSites)) :: IO (Either IOException ([UrlTitle], [UrlTitle]))
+      case result of
+        Left _ -> return ([], [])
+        Right d -> return d
+    else return ([], [])
+
 main :: IO ()
 main = do
   cssPath <- getArgs >>= \case
@@ -132,11 +164,8 @@ main = do
   homeDir <- fmap homeDirectory (getRealUserID >>= getUserEntryForID)
   quickmarks <- getQuickMarks homeDir
   bookmarks <- getBookmarks homeDir
-  withConnection (homeDir ++ "/.local/share/qutebrowser/history.sqlite") (\conn -> do
-    history <- query conn "SELECT url,title FROM History ORDER BY atime DESC LIMIT ?" (Only maxHistory) :: IO [UrlTitle]
-    frequentSitesRaw <- query conn "SELECT url,title FROM History GROUP BY url,title ORDER BY count(*) DESC LIMIT ?" (Only (maxFrequent * frequentQueryMultiplier)) :: IO [UrlTitle]
-    let frequentSites = take maxFrequent $ dedupeByDomain frequentSitesRaw
-    putStrLn $ renderHtml $ basicHtml cssContent history frequentSites quickmarks bookmarks)
+  (history, frequentSites) <- getHistoryData (homeDir ++ "/.local/share/qutebrowser/history.sqlite")
+  putStrLn $ renderHtml $ basicHtml cssContent history frequentSites quickmarks bookmarks
 
 faviconImg :: String -> H.Html
 faviconImg url = case faviconUrl url of
@@ -171,22 +200,24 @@ groupHeader name = H.h3 H.! A.class_ "px-3 py-1.5 text-xs font-medium text-slate
 ungroupedDivider :: H.Html
 ungroupedDivider = H.hr H.! A.class_ "border-t border-white/10 my-2 mx-3"
 
-renderGroup :: (String, [UrlTitle]) -> H.Html
-renderGroup (groupName, items)
+renderGroup :: Bool -> (String, [UrlTitle]) -> H.Html
+renderGroup _ (groupName, items)
   -- Real groups get a header and stripped prefixes
   | not (null groupName) = do
       groupHeader groupName
       mapM_ (link . stripGroupPrefix groupName) items
-  -- Ungrouped items (including former singletons) get a divider
-  | otherwise = do
-      ungroupedDivider
-      mapM_ link items
+-- Ungrouped items get a divider only if there are groups above
+renderGroup hasGroupsAbove ("", items) = do
+  if hasGroupsAbove then ungroupedDivider else return ()
+  mapM_ link items
 
 mkGroupedContainer :: String -> H.Html -> [UrlTitle] -> H.Html
 mkGroupedContainer _ _ [] = return ()
 mkGroupedContainer clr title links = container $ do
   header clr title
-  list $ mapM_ renderGroup (groupQuickmarks links)
+  let groups = groupQuickmarks links
+      hasRealGroups = any (not . null . fst) groups
+  list $ mapM_ (renderGroup hasRealGroups) groups
 
 
 genBodyClasses :: [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> H.AttributeValue
@@ -205,7 +236,8 @@ genBodyClasses history frequentSites quickmarks bookmarks =
     (H.stringValue ("bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6 gap-4 h-full grid " ++ (countToGridCols colCount)))
 
 basicHtml :: String -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> [UrlTitle] -> H.Html
-basicHtml cssContent history frequentSites quickmarks bookmarks =
+basicHtml cssContent history frequentSites quickmarks bookmarks = do
+  H.docType
   H.html $ do
     H.head $ do
       -- make webpage.darkmode behave
