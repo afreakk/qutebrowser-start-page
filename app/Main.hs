@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 import qualified Text.Blaze.Html5 as H
@@ -10,7 +11,7 @@ import Database.SQLite.Simple.FromRow
 
 import System.Posix.User
 
-import Data.List (groupBy, nubBy, sortBy)
+import Data.List (groupBy, nubBy, partition, sortBy)
 import Data.Maybe (fromMaybe)
 import Data.Ord (comparing)
 import Network.URI (parseURI, uriAuthority, uriRegName, uriScheme)
@@ -86,17 +87,31 @@ extractGroup title = case break (== '-') title of
 getGroup :: UrlTitle -> String
 getGroup (UrlTitle _ title) = extractGroup title
 
+-- Strip group prefix from title: "bok-erlend-1" with group "bok" -> "erlend-1"
+stripGroupPrefix :: String -> UrlTitle -> UrlTitle
+stripGroupPrefix group (UrlTitle url title) =
+  UrlTitle url (drop (length group + 1) title)
+
 -- Sort key that puts ungrouped items (empty group) at the end.
 groupSortKey :: String -> (Int, String)
 groupSortKey "" = (1, "")
 groupSortKey g = (0, g)
 
--- Groups quickmarks by prefix; ungrouped items appear last.
+-- Groups quickmarks by prefix; singleton groups are treated as ungrouped.
 groupQuickmarks :: [UrlTitle] -> [(String, [UrlTitle])]
 groupQuickmarks qms =
   let sorted = sortBy (comparing (groupSortKey . getGroup)) qms
       grouped = groupBy (\a b -> getGroup a == getGroup b) sorted
-  in map (\g -> (getGroup (head g), g)) grouped
+      rawGroups = map (\g -> (getGroup (head g), g)) grouped
+      -- Separate real groups (2+ items) from singletons
+      (realGroups, singletons) = partition (\(_, items) -> length items >= 2) rawGroups
+      -- Merge singletons into ungrouped, treating them as ungrouped
+      singletonItems = concatMap snd singletons
+      -- Find existing ungrouped section if any
+      (existingUngrouped, otherGroups) = partition (\(name, _) -> null name) realGroups
+      ungroupedItems = concatMap snd existingUngrouped ++ singletonItems
+      -- Rebuild with singletons merged into ungrouped at the end
+  in otherGroups ++ (if null ungroupedItems then [] else [("", ungroupedItems)])
 
 maxHistory :: Int
 maxHistory = 50
@@ -110,7 +125,9 @@ frequentQueryMultiplier = 3
 
 main :: IO ()
 main = do
-  cssPath <- fmap head getArgs
+  cssPath <- getArgs >>= \case
+    (p:_) -> return p
+    [] -> error "Usage: qutebrowser-start-page <css-path>"
   cssContent <- readFile cssPath
   homeDir <- fmap homeDirectory (getRealUserID >>= getUserEntryForID)
   quickmarks <- getQuickMarks homeDir
@@ -149,13 +166,21 @@ mkContainer clr title links = container $ do
                           list $ mapM_ link links
 
 groupHeader :: String -> H.Html
-groupHeader "" = return ()
 groupHeader name = H.h3 H.! A.class_ "px-3 py-1.5 text-xs font-medium text-slate-500 uppercase tracking-wider mt-2 first:mt-0" $ H.toMarkup name
 
+ungroupedDivider :: H.Html
+ungroupedDivider = H.hr H.! A.class_ "border-t border-white/10 my-2 mx-3"
+
 renderGroup :: (String, [UrlTitle]) -> H.Html
-renderGroup (groupName, items) = do
-  groupHeader groupName
-  mapM_ link items
+renderGroup (groupName, items)
+  -- Real groups get a header and stripped prefixes
+  | not (null groupName) = do
+      groupHeader groupName
+      mapM_ (link . stripGroupPrefix groupName) items
+  -- Ungrouped items (including former singletons) get a divider
+  | otherwise = do
+      ungroupedDivider
+      mapM_ link items
 
 mkGroupedContainer :: String -> H.Html -> [UrlTitle] -> H.Html
 mkGroupedContainer _ _ [] = return ()
