@@ -124,10 +124,9 @@ main = do
 faviconImg :: String -> H.Html
 faviconImg url = case faviconUrl url of
   Nothing -> return ()
-  Just fav -> H.img H.! A.src (H.toValue fav)
-                     H.! A.width "16"
-                     H.! A.height "16"
-                     H.! A.class_ "flex-shrink-0"
+  Just fav -> H.span H.! A.class_ "flex-shrink-0 w-4 h-4 bg-contain bg-center bg-no-repeat"
+                     H.! A.style (H.toValue $ "background-image: url('" ++ fav ++ "')")
+                     $ return ()
 
 link :: UrlTitle -> H.Html
 link (UrlTitle url title) = H.li $
